@@ -19,10 +19,21 @@ function error ($begin, $end) {
        ', fin le ' . $end->format('d.m.Y H:i') . PHP_EOL;
 }
 
+function iToH($i) {
+  $time = (float)abs($i->h) + ((float)abs($i->i) / 60);
+  if ($i->invert === 1) { return -$time; }
+  return $time;
+}
+
 function toHM($h) {
+  $neg = false;
+  if ($h < 0) { $neg = true; }
+  $h = abs($h);
   $m = round((floatval($h) - floor(floatval($h))) * 60);
   $h = floor(floatval($h));
-  return $m < 10 ? "$h:0$m" : "$h:$m";
+  $sign = '';
+  if ($neg) { $sign = '-'; }
+  return $m < 10 ? "$sign$h:0$m" : "$sign$h:$m";
 }
 
 function cmp_date ($a, $b) {
@@ -227,7 +238,7 @@ while (($row = $res->fetchArray())) {
 
   if ($full_overtime) {
     $diff = $begin->diff($end);
-    $overtime = (float)$diff->h + ((float)$diff->i / 60);
+    $overtime = iToH($diff);
     $time = 0;
   } else {
     /* Si l'heure de début est avant 5:00, cette différence est en temps de
@@ -236,7 +247,7 @@ while (($row = $res->fetchArray())) {
     $early->setTime($early_hour, $early_minute, 0);
     if ($early->getTimestamp() > $begin->getTimestamp()) {
       $diff = $early->diff($begin);
-      $overtime = (float)$diff->h + ((float)$diff->i / 60);
+      $overtime = iToH($diff);
       $begin = $early;
     }
 
@@ -258,7 +269,7 @@ while (($row = $res->fetchArray())) {
       if ($end->getTimestamp() < $early->getTimestamp()) {
         $notime = true;
         $diff = $end->diff($begin, true);
-        $overtime = (float)$diff->h + ((float)$diff->i / 60);
+        $overtime = iToH($diff);
       } else {
         /* sinon nous calculon la différence début -> 5:00 et déplaçons le début
            à 5:00 pour calculer le reste en travail normal (ce qui pourrait être
@@ -266,7 +277,7 @@ while (($row = $res->fetchArray())) {
            révolutionnaire) */
         $diff = $begin->diff($early, true);
         $begin = $early;
-        $overtime = (float)$diff->h + ((float)$diff->i / 60);
+        $overtime = iToH($diff);
       }
     }
 
@@ -277,13 +288,13 @@ while (($row = $res->fetchArray())) {
     $late->setTime($late_hour, $late_minute, 0);
     if ($late->getTimestamp() < $end->getTimestamp()) {
       $diff = $end->diff($late, true);
-      $overtime = (float)$diff->h + ((float)$diff->i / 60);                                                                                                                                                        
+      $overtime = iToH($diff);
       $end = $late;
     }
     
     if (!$notime) {
       $interval = $begin->diff($end, true);
-      $time = (float)$interval->h + ((float)$interval->i / 60);
+      $time = iToH($interval);
     }
   }
 notTimeType:
