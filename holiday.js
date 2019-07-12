@@ -1,4 +1,4 @@
-require('../Web/location/js/days.js')
+require('./days.js')
 
 let days = new Holiday(2019)
 days.addYear(2018)
