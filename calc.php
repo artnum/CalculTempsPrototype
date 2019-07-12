@@ -116,7 +116,7 @@ echo "Période:\t$p[0] - $p[1]\n";
 
 
 while (cmp_date($date, $to) <= 0) {
-  $HoursInYear[$date->format("Y-m-d")] = ['todo' => 0,'ratio' => 0, 'reason' => NORMAL, 'done' => 0, 'overtime' => 0, 'days' => 0, 'driving' => 0];
+  $HoursInYear[$date->format("Y-m-d")] = ['todo' => 0,'ratio' => 0, 'reason' => NORMAL, 'done' => 0, 'overtime' => 0, 'days' => 0, 'driving' => 0, 'overtime_ratio' => 1.5];
   $workday = NORMAL;
   if ($date->format('N') === '6' || $date->format('N') === '7') {
     $workday = WEEKEND;
@@ -140,6 +140,7 @@ while (cmp_date($date, $to) <= 0) {
   if (is_null($group)) {
     $workday = NO_CONDITION;
   }
+  $overtime_ratio = isset($conditions[$group]['overtime']) ? floatval($conditions[$group]['overtime']) / 100 : 1.5;
   $work_ratio = isset($conditions[$group]['workratio']) ? floatval($conditions[$group]['workratio']) / 100 : 1;
   $day_hours = (isset($conditions[$group]['workweek']) ? floatval($conditions[$group]['workweek']) / 5 : 9.6) * $work_ratio; 
   if ($workday != NORMAL) {
@@ -155,7 +156,8 @@ while (cmp_date($date, $to) <= 0) {
     'done' => 0, /* heure effectivement effectuée */
     'overtime' => 0, /* surplus d'heure pour la part faite de nuit */
     'days' => 0, /* nombre de jour complet ou demi jour entré dans la base (si > 1 chance que ce soit problèmatique) */
-    'driving' => 0
+    'driving' => 0,
+    'overtime_ratio' => 1.5
     ];
   $HoursToDo += $day_hours;
 
@@ -217,65 +219,76 @@ while (($row = $res->fetchArray())) {
     continue;
   }
 
-  /* Si l'heure de début est avant 5:00, cette différence est en temps de
-     surtravaille et on déplace le début à 5:00 */
-  $early = new DateTime($row['atTemp_begin']);
-  $early->setTime($early_hour, $early_minute, 0);
-  if ($early->getTimestamp() > $begin->getTimestamp()) {
-    $diff = $early->diff($begin);
+  $full_overtime = false;
+  /* si le travail est un dimanche ou un jour férié, le temps intégral est en temps supplémentaire */
+  if ($begin->format('N') === '7' || in_array($begin->format("Y-m-d\n"), $holidays)) {
+    $full_overtime = true;
+  }
+
+  if ($full_overtime) {
+    $diff = $begin->diff($end);
     $overtime = (float)$diff->h + ((float)$diff->i / 60);
-    $begin = $early;
-  }
-
-  /* Si l'heure de début est après 22:00, plusieurs choix : */
-  $late = new DateTime($row['atTemp_begin']);
-  $late->setTime($late_hour, $late_minute, 0);
-  if ($late->getTimestamp() < $begin->getTimestamp()) {
-
-    $early = new DateTime($row['atTemp_end']);
+    $time = 0;
+  } else {
+    /* Si l'heure de début est avant 5:00, cette différence est en temps de
+       surtravaille et on déplace le début à 5:00 */
+    $early = new DateTime($row['atTemp_begin']);
     $early->setTime($early_hour, $early_minute, 0);
-    /* certainement impossible */
-    if ($early->getTimestamp() < $begin->getTimestamp()) {
-      error($begin, $end);
-      continue;
-    }
-    /* Si la fin est avant 5:00, nous sommes totalement dans du travaille
-       supplémentaire, donc calcul différence début -> fin entièrement dans
-       surtravail */
-    if ($end->getTimestamp() < $early->getTimestamp()) {
-      $notime = true;
-      $diff = $end->diff($begin, true);
+    if ($early->getTimestamp() > $begin->getTimestamp()) {
+      $diff = $early->diff($begin);
       $overtime = (float)$diff->h + ((float)$diff->i / 60);
-    } else {
-      /* sinon nous calculon la différence début -> 5:00 et déplaçons le début
-         à 5:00 pour calculer le reste en travail normal (ce qui pourrait être
-         cause pour une lutte syndicale, à ajouter dans mon carnet de
-         révolutionnaire) */
-      $diff = $begin->diff($early, true);
       $begin = $early;
-      $overtime = (float)$diff->h + ((float)$diff->i / 60);                                                                                                                                                       
+    }
+
+    /* Si l'heure de début est après 22:00, plusieurs choix : */
+    $late = new DateTime($row['atTemp_begin']);
+    $late->setTime($late_hour, $late_minute, 0);
+    if ($late->getTimestamp() < $begin->getTimestamp()) {
+
+      $early = new DateTime($row['atTemp_end']);
+      $early->setTime($early_hour, $early_minute, 0);
+      /* certainement impossible */
+      if ($early->getTimestamp() < $begin->getTimestamp()) {
+        error($begin, $end);
+        continue;
+      }
+      /* Si la fin est avant 5:00, nous sommes totalement dans du travaille
+         supplémentaire, donc calcul différence début -> fin entièrement dans
+         surtravail */
+      if ($end->getTimestamp() < $early->getTimestamp()) {
+        $notime = true;
+        $diff = $end->diff($begin, true);
+        $overtime = (float)$diff->h + ((float)$diff->i / 60);
+      } else {
+        /* sinon nous calculon la différence début -> 5:00 et déplaçons le début
+           à 5:00 pour calculer le reste en travail normal (ce qui pourrait être
+           cause pour une lutte syndicale, à ajouter dans mon carnet de
+           révolutionnaire) */
+        $diff = $begin->diff($early, true);
+        $begin = $early;
+        $overtime = (float)$diff->h + ((float)$diff->i / 60);
+      }
+    }
+
+    /* normalement il reste que le cas où la fin est plus tard que 22:00 à
+       traiter, donc on calcul la différence en temps supp et on déplace la fin à
+       22:00 */
+    $late = new DateTime($row['atTemp_end']);
+    $late->setTime($late_hour, $late_minute, 0);
+    if ($late->getTimestamp() < $end->getTimestamp()) {
+      $diff = $end->diff($late, true);
+      $overtime = (float)$diff->h + ((float)$diff->i / 60);                                                                                                                                                        
+      $end = $late;
+    }
+    
+    if (!$notime) {
+      $interval = $begin->diff($end, true);
+      $time = (float)$interval->h + ((float)$interval->i / 60);
     }
   }
-
-  /* normalement il reste que le cas où la fin est plus tard que 22:00 à
-     traiter, donc on calcul la différence en temps supp et on déplace la fin à
-     22:00 */
-  $late = new DateTime($row['atTemp_end']);
-  $late->setTime($late_hour, $late_minute, 0);
-  if ($late->getTimestamp() < $end->getTimestamp()) {
-    $diff = $end->diff($late, true);
-    $overtime = (float)$diff->h + ((float)$diff->i / 60);                                                                                                                                                        
-    $end = $late;
-  }
-    
-  if (!$notime) {
-    $interval = $begin->diff($end, true);
-    $time = (float)$interval->h + ((float)$interval->i / 60);
-  }
-  
 notTimeType:
 
-    $currentDay = $begin->format('Y-m-d');  
+  $currentDay = $begin->format('Y-m-d');
   /* Composition du tableau final, en prenant en compte les cas où le type et
      "jour entier" ou "demi-jour" */
   $reason = 0;
@@ -354,7 +367,8 @@ foreach($HoursInYear as $k => $entry) {
   $reason = implode(', ', $reason);
     
   list ($y, $m, $d) = explode('-', $k);
-  $total = $entry['done'] + $entry['overtime'];
+  /* total du temps effectué est temps fait en temps normal + temps fait en période de surtravail multiplié par le ratio */
+  $total = $entry['done'] + ($entry['overtime'] * $entry['overtime_ratio']);
   $diff = $total - $entry['todo'];
   $ratio = $entry['ratio'] * 100;
   $todo += $entry['todo'];
