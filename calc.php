@@ -223,7 +223,7 @@ notTimeType:
     'done' => 0, 
     'overtime' => 0 */
 /* le gros flemmard utilise un fonction de déboggage pour sortir le résultat */
-$header = "Date     \t\tÀ faire\tFait\tMajoré\tTotal\tDiff\tSolde\tTaux\tJours\tCond\tRaison\n";
+$header = "Date     \t\tÀ faire\tFait\tMajoré\tTotal\tDiff\tSolde\tTaux\tJours\tRaison\n";
 $todo = 0;
 $totalDone = 0;
 $month = -1;
@@ -282,10 +282,17 @@ foreach($HoursInYear as $k => $entry) {
        "\t" . toHM($entry['overtime']) .
        "\t" . toHM($total) .
        "\t" . toHM($diff) .
-       "\t" . toHM($yearDiff) . "\t$ratio %\t$entry[days]\t$entry[driving]\t$reason\n";
+       "\t" . toHM($yearDiff) . "\t$ratio %\t$entry[days]\t$reason";
+
+  $line = 0;
   foreach ($entry['entries'] as $e) {
-    echo "    $e\n";
+    if ($line === 0) { echo "\n    "; }
+    else { echo ', '; }
+    echo "$e";
+    $line++;
+    if ($line > 5) { $line = 0; }
   }
+  echo "\n";
 }
 echo "\n";
 $diff = $totalDone - $todo;
