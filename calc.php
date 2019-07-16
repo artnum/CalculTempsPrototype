@@ -171,7 +171,7 @@ notTimeType:
   if ($row['atTemp_type'] === 'halfday' || $row['atTemp_type'] === 'wholeday') {
     $HoursInYear[$currentDay]['entries'][] = $row['atTemp_type'] === 'wholeday' ? 'Jour entier' : 'Demi-jour';
   } else {
-    $HoursInYear[$currentDay]['entries'][] = $begin->format('G:i') . ' - ' . $end->format('G:i');
+    $HoursInYear[$currentDay]['entries'][] = $begin->format('G:i') . '-' . $end->format('G:i');
   }
   $reason = 0;
   switch ($row['atTemp_reason']) {
@@ -223,7 +223,7 @@ notTimeType:
     'done' => 0, 
     'overtime' => 0 */
 /* le gros flemmard utilise un fonction de déboggage pour sortir le résultat */
-$header = "Date     \t\tÀ faire\tFait\tMajoré\tTotal\tDiff\tSolde\tTaux\tJours\tRaison\n";
+$header = "Date     \t           \t           \tÀ faire\tFait\tMajoré\tTotal\tDiff\tSolde\tTaux\tJours\tRaison\n";
 $todo = 0;
 $totalDone = 0;
 $month = -1;
@@ -277,22 +277,26 @@ foreach($HoursInYear as $k => $entry) {
     echo " $y ===\n";
     echo $header . "\n";
   }
-  echo "$d.$m.$y\t\t" . toHM($entry['todo']) .
+  $e = array_slice($entry['entries'], 0, 2);
+  if (count($e) === 1) {
+    $e[] = '           ';
+  }
+  if (count($e) === 0) {
+    $e[] = '           ';
+    $e[] = '           ';
+  }
+  echo "$d.$m.$y\t" . implode("\t", $e);
+  if (count($entry['entries']) > 2) {
+    echo "*\t";
+  } else {
+    echo " \t";
+  }
+  echo  toHM($entry['todo']) .
        "\t" . toHM($entry['done']) .
        "\t" . toHM($entry['overtime']) .
        "\t" . toHM($total) .
        "\t" . toHM($diff) .
-       "\t" . toHM($yearDiff) . "\t$ratio %\t$entry[days]\t$reason";
-
-  $line = 0;
-  foreach ($entry['entries'] as $e) {
-    if ($line === 0) { echo "\n    "; }
-    else { echo ', '; }
-    echo "$e";
-    $line++;
-    if ($line > 5) { $line = 0; }
-  }
-  echo "\n";
+       "\t" . toHM($yearDiff) . "\t$ratio %\t$entry[days]\t$reason\n";
 }
 echo "\n";
 $diff = $totalDone - $todo;

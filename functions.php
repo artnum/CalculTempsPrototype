@@ -65,7 +65,8 @@ function strToDT ($str) {
 
 /* répartir 24h, en minute, sur 360° */
 function toDeg ($dt) {
- return floatval(intval($dt->format('G') * 60) + intval($dt->format('i'))) * 0.25;
+  if (intval($dt->format('G')) === 0 && intval($dt->format('i')) === 0) { return 360; }
+  return floatval(intval($dt->format('G') * 60) + intval($dt->format('i'))) * 0.25;
 }
 
 function inInterval ($a, $i1, $i2) {
