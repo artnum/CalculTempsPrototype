@@ -1,92 +1,5 @@
 <?PHP
-
-define('NORMAL', 0x1);
-define('WEEKEND', 0x2);
-define('HOLIDAY', 0x4);
-define('NO_CONDITION', 0x8);
-define('VACANCY', 0x10);
-define('HEALTH', 0x20);
-define('ARMY', 0x40);
-define('ACCIDENT', 0x80);
-define('LEARNING', 0x100);
-
-const DAY_LENGTH_IN_S = 86400; /* 60*60*24 */
-const DAY_LENGTH_IN_MS = 86400000; /* DAY_LENGTH_IN_S * 1000 */
-
-/* En cas d'erreur on affiche pour traiter manuellement */
-function error ($begin, $end) {
-  echo 'Erreur de date -> début le ' . $begin->format('d.m.Y H:i') .
-       ', fin le ' . $end->format('d.m.Y H:i') . PHP_EOL;
-}
-
-function iToH($i) {
-  $time = (float)abs($i->h) + ((float)abs($i->i) / 60);
-  if ($i->invert === 1) { return -$time; }
-  return $time;
-}
-
-function toHM($h) {
-  $neg = false;
-  if ($h < 0) { $neg = true; }
-  $h = abs($h);
-  $m = round((floatval($h) - floor(floatval($h))) * 60);
-  $h = floor(floatval($h));
-  $sign = '';
-  if ($neg) { $sign = '-'; }
-  return $m < 10 ? "$sign$h:0$m" : "$sign$h:$m";
-}
-
-function cmp_date ($a, $b) {
-  /* Raccourci salvateur pour comparer deux entier entre ==, < ou > :
-     a - b == 0 si égal
-     a - b < 0 si b est plus grand
-     a - b > 0 si a est plus grand
-   */
-  return round($a->getTimestamp() / DAY_LENGTH_IN_S) -
-         round($b->getTimestamp() / DAY_LENGTH_IN_S);
-}
-
-function load_conditions ($file, $year) {
-  if (!is_readable($file)) {
-    die('pas de fichiers de configuration' . PHP_EOL);
-  }
-
-  /* t'as pas cette fonction magique en C :D :D :D */
-  $conf = parse_ini_file($file, true);
-  if (!isset($conf["$year"])) {
-    die('pas de configuration pour l\'année' . PHP_EOL);
-  }
-
-  $conditions = array();
-  /* et encore moins foreach (clé => valeur) d'un tableau nommé */
-  foreach($conf["$year"] as $key => $value) {
-    list ($group, $property) = explode('_', $key, 2); /* découpe start_XXXX */
-    if (!isset($conditions[$group])) {
-      $conditions[$group] = []; /* je sais pas s'il est pas possible de ne pas
-                                   faire cette initialisation .... mais dans le doute */
-    }
-    switch ($property) {
-      case 'begin':
-        /* dans ce genre de cas, indiquer "fall through" est une bonne pratique
-           pour que l'on sache que c'est volontaire de pas avoir de break,
-           d'ailleurs mon analyseur statique pour le javascript gueule si je le
-           fait pas */
-      case 'end':
-        list ($d, $m) = explode('.', $value, 2);
-        $value = new DateTime();
-        $value->setDate($year, $m, $d);
-        $value->setTime(12, 0, 0); /* 12h permet de pas trop se prendre les
-                                      pieds dans les zones horaires */
-        break;
-      default:
-        /* uniquement pour indiquer que j'ai pas oublier de condition */
-        break;
-    }
-    $conditions[$group][$property] = $value;
-  }
-
-  return $conditions;
-}
+require('functions.php');
 
 /* Ouvrir la base de donnée, sélectionner toutes les entrées d'une personne
    donnée */
@@ -127,7 +40,7 @@ echo "Période:\t$p[0] - $p[1]\n";
 
 
 while (cmp_date($date, $to) <= 0) {
-  $HoursInYear[$date->format("Y-m-d")] = ['todo' => 0,'ratio' => 0, 'reason' => NORMAL, 'done' => 0, 'overtime' => 0, 'days' => 0, 'driving' => 0, 'overtime_ratio' => 1.5];
+  $HoursInYear[$date->format("Y-m-d")] = ['todo' => 0,'ratio' => 0, 'reason' => NORMAL, 'done' => 0, 'overtime' => 0, 'days' => 0, 'driving' => 0, 'overtime_ratio' => 1.5, 'entries' => []];
   $workday = NORMAL;
   if ($date->format('N') === '6' || $date->format('N') === '7') {
     $workday = WEEKEND;
@@ -136,7 +49,6 @@ while (cmp_date($date, $to) <= 0) {
   if (in_array($date->format("Y-m-d\n"), $holidays)) {
     $workday = HOLIDAY;
   }
-
   $group = null;
   foreach($conditions as $k => $v) {
     if (!isset($v['begin']) || !isset($v['end'])) {
@@ -168,7 +80,8 @@ while (cmp_date($date, $to) <= 0) {
     'overtime' => 0, /* surplus d'heure pour la part faite de nuit */
     'days' => 0, /* nombre de jour complet ou demi jour entré dans la base (si > 1 chance que ce soit problèmatique) */
     'driving' => 0,
-    'overtime_ratio' => 1.5
+    'overtime_ratio' => 1.5,
+    'entries' => []
     ];
   $HoursToDo += $day_hours;
 
@@ -236,72 +149,30 @@ while (($row = $res->fetchArray())) {
     $full_overtime = true;
   }
 
+  /* le début et la fin sont dans l'intervalle des heures supp */
+  if (intervalInInterval($begin, $end, strToDT("$late_hour:$late_minute"), strToDT("$early_hour:$early_minute"))) {
+    $full_overtime = true;
+  }
+  
   if ($full_overtime) {
     $diff = $begin->diff($end);
     $overtime = iToH($diff);
     $time = 0;
   } else {
-    /* Si l'heure de début est avant 5:00, cette différence est en temps de
-       surtravaille et on déplace le début à 5:00 */
-    $early = new DateTime($row['atTemp_begin']);
-    $early->setTime($early_hour, $early_minute, 0);
-    if ($early->getTimestamp() > $begin->getTimestamp()) {
-      $diff = $early->diff($begin);
-      $overtime = iToH($diff);
-      $begin = $early;
-    }
-
-    /* Si l'heure de début est après 22:00, plusieurs choix : */
-    $late = new DateTime($row['atTemp_begin']);
-    $late->setTime($late_hour, $late_minute, 0);
-    if ($late->getTimestamp() < $begin->getTimestamp()) {
-
-      $early = new DateTime($row['atTemp_end']);
-      $early->setTime($early_hour, $early_minute, 0);
-      /* certainement impossible */
-      if ($early->getTimestamp() < $begin->getTimestamp()) {
-        error($begin, $end);
-        continue;
-      }
-      /* Si la fin est avant 5:00, nous sommes totalement dans du travaille
-         supplémentaire, donc calcul différence début -> fin entièrement dans
-         surtravail */
-      if ($end->getTimestamp() < $early->getTimestamp()) {
-        $notime = true;
-        $diff = $end->diff($begin, true);
-        $overtime = iToH($diff);
-      } else {
-        /* sinon nous calculon la différence début -> 5:00 et déplaçons le début
-           à 5:00 pour calculer le reste en travail normal (ce qui pourrait être
-           cause pour une lutte syndicale, à ajouter dans mon carnet de
-           révolutionnaire) */
-        $diff = $begin->diff($early, true);
-        $begin = $early;
-        $overtime = iToH($diff);
-      }
-    }
-
-    /* normalement il reste que le cas où la fin est plus tard que 22:00 à
-       traiter, donc on calcul la différence en temps supp et on déplace la fin à
-       22:00 */
-    $late = new DateTime($row['atTemp_end']);
-    $late->setTime($late_hour, $late_minute, 0);
-    if ($late->getTimestamp() < $end->getTimestamp()) {
-      $diff = $end->diff($late, true);
-      $overtime = iToH($diff);
-      $end = $late;
-    }
-    
-    if (!$notime) {
-      $interval = $begin->diff($end, true);
-      $time = iToH($interval);
-    }
+    $result = crossIntervalLength($begin, $end, strToDT("$early_hour:$early_minute"), strToDT("$late_hour:$late_minute"));
+    $overtime = $result[1] / 60;
+    $time = $result[0] / 60;
   }
 notTimeType:
 
   $currentDay = $begin->format('Y-m-d');
   /* Composition du tableau final, en prenant en compte les cas où le type et
      "jour entier" ou "demi-jour" */
+  if ($row['atTemp_type'] === 'halfday' || $row['atTemp_type'] === 'wholeday') {
+    $HoursInYear[$currentDay]['entries'][] = $row['atTemp_type'] === 'wholeday' ? 'Jour entier' : 'Demi-jour';
+  } else {
+    $HoursInYear[$currentDay]['entries'][] = $begin->format('G:i') . ' - ' . $end->format('G:i');
+  }
   $reason = 0;
   switch ($row['atTemp_reason']) {
     default:
@@ -352,7 +223,7 @@ notTimeType:
     'done' => 0, 
     'overtime' => 0 */
 /* le gros flemmard utilise un fonction de déboggage pour sortir le résultat */
-$header = "Date     \tÀ faire\tFait\tSupp\tTotal\tDiff\tAn tot\tAn fait\tAn diff\tTaux\tJours\tCond\tRaison\n";
+$header = "Date     \t\tÀ faire\tFait\tMajoré\tTotal\tDiff\tSolde\tTaux\tJours\tCond\tRaison\n";
 $todo = 0;
 $totalDone = 0;
 $month = -1;
@@ -406,14 +277,15 @@ foreach($HoursInYear as $k => $entry) {
     echo " $y ===\n";
     echo $header . "\n";
   }
-  echo "$d.$m.$y\t" . toHM($entry['todo']) .
+  echo "$d.$m.$y\t\t" . toHM($entry['todo']) .
        "\t" . toHM($entry['done']) .
        "\t" . toHM($entry['overtime']) .
        "\t" . toHM($total) .
        "\t" . toHM($diff) .
-       "\t" . toHM($todo) .
-       "\t" . toHM($totalDone) .
        "\t" . toHM($yearDiff) . "\t$ratio %\t$entry[days]\t$entry[driving]\t$reason\n";
+  foreach ($entry['entries'] as $e) {
+    echo "    $e\n";
+  }
 }
 echo "\n";
 $diff = $totalDone - $todo;
