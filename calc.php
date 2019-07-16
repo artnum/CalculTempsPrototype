@@ -216,14 +216,7 @@ notTimeType:
   }
 }
 
-/*
-    'todo' => $day_hours,                                                                                                                                                                                        
-    'ratio' => $work_ratio,
-    'reason' => $workday, 
-    'done' => 0, 
-    'overtime' => 0 */
-/* le gros flemmard utilise un fonction de déboggage pour sortir le résultat */
-$header = "Date     \t           \t           \tÀ faire\tFait\tMajoré\tTotal\tDiff\tSolde\tTaux\tJours\tRaison\n";
+$header = "Date     \t           \t           \tÀ faire\t Fait\tMajorer\tTotal\t Diff\t Solde\tTaux\tJours\tRaison\n";
 $todo = 0;
 $totalDone = 0;
 $month = -1;
@@ -304,5 +297,5 @@ echo "=== Total ===\n";
 echo "À effectuer : \t\t" . toHM($todo).  "\n";
 echo "Effectué : \t\t" . toHM($totalDone) . "\n";
 echo "Solde : \t\t" . toHM($diff) . "\n";
-echo "Jour de vacances pris : $vacancy\n";
+echo "Jour de vacances pris :\t $vacancy\n";
 ?>

@@ -30,9 +30,10 @@ function toHM($h) {
   $h = abs($h);
   $m = round((floatval($h) - floor(floatval($h))) * 60);
   $h = floor(floatval($h));
-  $sign = '';
+
+  $sign = ' ';
   if ($neg) { $sign = '-'; }
-  return $m < 10 ? "$sign$h:0$m" : "$sign$h:$m";
+  return sprintf("% 3u:%02u$sign", $h, $m);
 }
 
 function cmp_date ($a, $b) {
@@ -87,7 +88,7 @@ function intervalLength($i1, $i2) {
   $ri1 = toDeg($i1);
   $ri2 = toDeg($i2);
   $ri2 = ($ri2 - $ri1) < 0 ? $ri2 - $ri1 + 360.0 : $ri2 - $ri1;
-  return $ri2 / 0.25;
+  return ceil($ri2 / 0.25);
 }
 
 function crossIntervalLength ($i1, $i2, $j1, $j2) {
