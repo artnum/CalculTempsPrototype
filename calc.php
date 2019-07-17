@@ -95,7 +95,8 @@ while (($row = $res->fetchArray())) {
   $time = 0;
   $overtime = 0;
   $notime = false;
-
+  $onError = 0;
+  
   /* Convertit en objet php le temps et l'heure */
   $begin = new DateTime($row['atTemp_begin']);
   $end = new DateTime($row['atTemp_end']);
@@ -111,8 +112,8 @@ while (($row = $res->fetchArray())) {
   $group = null;
   foreach($conditions as $k => $v) {
     if (!isset($v['begin']) || !isset($v['end'])) {
-      error($begin, $end);
-      break;
+      $onError = ERROR_INPUT;
+      goto error;
     }
     if (cmp_date($v['begin'], $begin) < 0 && cmp_date($v['end'], $begin) >= 0) {
       $group = $k;
@@ -134,15 +135,19 @@ while (($row = $res->fetchArray())) {
 
   /* Pas possible de travailler + que 24 */
   if ($begin->diff($end,true)->h >= 24) {
-    error($begin, $end);
-    continue;
+    $onError = ERROR_INPUT;
+    goto error;
   }
   /* Fin du travail avant le début impossible */
   if ($begin->diff($end)->h < 0 && $begin->diff($end)->m < 0) {
-    error($begin, $end);
-    continue;
+    $onError = ERROR_INPUT;
+    goto error;
   }
 
+  $chBegin = new ClockHour($begin->format('G'), $begin->format('i'));
+  $chEnd = new ClockHour($end->format('G'), $end->format('i'));
+  $chEnd->isThe24th();
+  
   $full_overtime = false;
   /* si le travail est un dimanche ou un jour férié, le temps intégral est en temps supplémentaire */
   if ($begin->format('N') === '7' || in_array($begin->format("Y-m-d\n"), $holidays)) {
@@ -150,7 +155,7 @@ while (($row = $res->fetchArray())) {
   }
 
   /* le début et la fin sont dans l'intervalle des heures supp */
-  if (intervalInInterval($begin, $end, strToDT("$late_hour:$late_minute"), strToDT("$early_hour:$early_minute"))) {
+  if (intervalInInterval($chBegin, $chEnd, strToDT("$late_hour:$late_minute"), strToDT("$early_hour:$early_minute"))) {
     $full_overtime = true;
   }
   
@@ -159,10 +164,12 @@ while (($row = $res->fetchArray())) {
     $overtime = iToH($diff);
     $time = 0;
   } else {
-    $result = crossIntervalLength($begin, $end, strToDT("$early_hour:$early_minute"), strToDT("$late_hour:$late_minute"));
+    $result = crossIntervalLength($chBegin, $chEnd, strToDT("$early_hour:$early_minute"), strToDT("$late_hour:$late_minute"));
     $overtime = $result[1] / 60;
     $time = $result[0] / 60;
   }
+  
+error:
 notTimeType:
 
   $currentDay = $begin->format('Y-m-d');
@@ -173,46 +180,52 @@ notTimeType:
   } else {
     $HoursInYear[$currentDay]['entries'][] = $begin->format('G:i') . '-' . $end->format('G:i');
   }
-  $reason = 0;
-  switch ($row['atTemp_reason']) {
-    default:
-    case 'work': 
-      if ($row['atTemp_type'] === 'halfday') {
-        $HoursInYear[$currentDay]['done'] += $HoursInYear[$currentDay]['todo'] / 2;
-        $HoursInYear[$currentDay]['days'] += 0.5;
-      } else if ($row['atTemp_type'] === 'wholeday') {
-        $HoursInYear[$currentDay]['done'] += $HoursInYear[$currentDay]['todo'];
-        $HoursInYear[$currentDay]['days'] += 1;
-      } else {
-        $HoursInYear[$currentDay]['done'] += $time;
-        $HoursInYear[$currentDay]['overtime'] += $overtime;
-      }
-      break;
-    case 'driving':
-      $HoursInYear[$currentDay]['driving'] += $time; 
-      break;
-    case 'holiday':
-      if ($reason === 0) { $reason = VACANCY; }
-    case 'learning':
-      if ($reason === 0) { $reason = LEARNING; }
-    case 'accident':
-      if ($reason === 0) { $reason = ACCIDENT; }
-    case 'army':
-      if ($reason === 0) { $reason = ARMY; }
-    case 'health':
-      if ($reason === 0) { $reason = ACCIDENT; }
-      $HoursInYear[$currentDay]['reason'] |= $reason;
-      if ($row['atTemp_type'] === 'halfday') {
-        $HoursInYear[$currentDay]['todo'] = $HoursInYear[$currentDay]['todo'] / 2;
-        $HoursInYear[$currentDay]['days'] += 0.5;
-      } else if ($row['atTemp_type'] === 'wholeday') {
-        $HoursInYear[$currentDay]['todo'] = 0;
-        $HoursInYear[$currentDay]['days'] += 1;
-      } else {
-        $HoursInYear[$currentDay]['done'] += $time;
-        $HoursInYear[$currentDay]['overtime'] += $overtime;
-      }
-      break;
+  if ($onError !== 0) {
+    $HoursInYear[$currentDay]['done'] = 0;
+    $HoursInYear[$currentDay]['days'] = 0;
+    $HoursInYear[$currentDay]['reason'] |= $onError;
+  } else {
+    $reason = 0;
+    switch ($row['atTemp_reason']) {
+      default:
+      case 'work': 
+        if ($row['atTemp_type'] === 'halfday') {
+          $HoursInYear[$currentDay]['done'] += $HoursInYear[$currentDay]['todo'] / 2;
+          $HoursInYear[$currentDay]['days'] += 0.5;
+        } else if ($row['atTemp_type'] === 'wholeday') {
+          $HoursInYear[$currentDay]['done'] += $HoursInYear[$currentDay]['todo'];
+          $HoursInYear[$currentDay]['days'] += 1;
+        } else {
+          $HoursInYear[$currentDay]['done'] += $time;
+          $HoursInYear[$currentDay]['overtime'] += $overtime;
+        }
+        break;
+      case 'driving':
+        $HoursInYear[$currentDay]['driving'] += $time; 
+        break;
+      case 'holiday':
+        if ($reason === 0) { $reason = VACANCY; }
+      case 'learning':
+        if ($reason === 0) { $reason = LEARNING; }
+      case 'accident':
+        if ($reason === 0) { $reason = ACCIDENT; }
+      case 'army':
+        if ($reason === 0) { $reason = ARMY; }
+      case 'health':
+        if ($reason === 0) { $reason = ACCIDENT; }
+        $HoursInYear[$currentDay]['reason'] |= $reason;
+        if ($row['atTemp_type'] === 'halfday') {
+          $HoursInYear[$currentDay]['todo'] = $HoursInYear[$currentDay]['todo'] / 2;
+          $HoursInYear[$currentDay]['days'] += 0.5;
+        } else if ($row['atTemp_type'] === 'wholeday') {
+          $HoursInYear[$currentDay]['todo'] = 0;
+          $HoursInYear[$currentDay]['days'] += 1;
+        } else {
+          $HoursInYear[$currentDay]['done'] += $time;
+          $HoursInYear[$currentDay]['overtime'] += $overtime;
+        }
+        break;
+    }
   }
 }
 
@@ -235,6 +248,7 @@ foreach($HoursInYear as $k => $entry) {
         case ARMY: $reason[] = 'armée'; break;
         case ACCIDENT: $reason[] = 'accident'; break;
         case LEARNING: $reason[] = 'formation'; break;
+        case ERROR_INPUT: $reason[] = 'erreur'; break;
       }
     }
   }
