@@ -143,35 +143,22 @@ while (($row = $res->fetchArray())) {
     $onError = ERROR_INPUT;
     goto error;
   }
-
-  $chBegin = new ClockHour($begin->format('G'), $begin->format('i'));
-  $chEnd = new ClockHour($end->format('G'), $end->format('i'));
-  $chEnd->isThe24th();
   
-  $full_overtime = false;
-  /* si le travail est un dimanche ou un jour férié, le temps intégral est en temps supplémentaire */
+  $x = new ClockInterval($begin->format('G:i'), $end->format('G:i'));
+  $time = 0;
+  $overtime = 0;
   if ($begin->format('N') === '7' || in_array($begin->format("Y-m-d\n"), $holidays)) {
-    $full_overtime = true;
-  }
-
-  /* le début et la fin sont dans l'intervalle des heures supp */
-  if (intervalInInterval($chBegin, $chEnd, strToDT("$late_hour:$late_minute"), strToDT("$early_hour:$early_minute"))) {
-    $full_overtime = true;
-  }
-  
-  if ($full_overtime) {
-    $diff = $begin->diff($end);
-    $overtime = iToH($diff);
+    $overtime = $x->length()->toMin() / 60;
     $time = 0;
   } else {
-    $result = crossIntervalLength($chBegin, $chEnd, strToDT("$early_hour:$early_minute"), strToDT("$late_hour:$late_minute"));
-    $overtime = $result[1] / 60;
-    $time = $result[0] / 60;
+    $ref = new ClockInterval("$late_hour:$late_minute", "$early_hour:$early_minute");
+    $inLen = $ref->overlap_length($x);
+    $overtime = $inLen->toMin() / 60;
+    $time = ($x->length()->toMin() - $inLen->toMin()) / 60;
   }
-  
+
 error:
 notTimeType:
-
   $currentDay = $begin->format('Y-m-d');
   /* Composition du tableau final, en prenant en compte les cas où le type et
      "jour entier" ou "demi-jour" */
