@@ -39,7 +39,7 @@ class ClockHour {
   }
 
   /* pour le calcul entier, valeur opaque pour le calcul, doit être utilisé en corrélation avec INT_MAX */
-  function toInt(): int {
+  function toInt() {
     return intval(round($this->h * 60 + $this->m));
   }
 
@@ -48,7 +48,7 @@ class ClockHour {
     $this->m = (($int / 60) - $this->h) * 60;
   }
   
-  function toMin(): float {
+  function toMin() {
     return floatval($this->h * 60 + $this->m);
   }
 
@@ -115,7 +115,7 @@ class ClockInterval {
     return new ClockInterval(0, $e);
   }
 
-  function norm_to_this ($interval): array {
+  function norm_to_this ($interval) {
     $n = $this->normalized();
     $n1 = $interval->normalized();
     $deltaB = $this->begin->toInt() - $interval->begin->toInt();
@@ -137,7 +137,7 @@ class ClockInterval {
   }
   
   /* longueur où les intersections se croisent */
-  function overlap_length($interval): ClockHour {
+  function overlap_length($interval) {
     $ib = $interval->begin->toInt();
     $ie = $interval->end->toInt();
     $ref_b = $this->begin->toInt();
@@ -160,7 +160,7 @@ class ClockInterval {
   }
   
   /* l'heure est dans l'interval */
-  function isIn($p): bool {
+  function isIn($p) {
     $ref_b = $this->begin->toInt();
     $ref_e = $this->end->toInt();
     if ($p instanceof ClockInterval) {
@@ -185,7 +185,7 @@ class ClockInterval {
     }
   }
 
-  function length(): ClockHour {
+  function length() {
     $result = new ClockHour();
     $b = $this->begin->toInt();
     $e = $this->end->toInt();
