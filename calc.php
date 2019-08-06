@@ -175,6 +175,12 @@ notTimeType:
     $reason = 0;
     switch ($row['atTemp_reason']) {
       default:
+      case 'parttime':
+         $HoursInYear[$currentDay]['reason'] |= COMPENSATION;
+         $HoursInYear[$currentDay]['days'] += 0;
+         $HoursInYear[$currentDay]['done'] += 0;
+         $HoursInYear[$currentDay]['overtime'] += 0;
+         break;
       case 'work': 
         if ($row['atTemp_type'] === 'halfday') {
           $HoursInYear[$currentDay]['done'] += $HoursInYear[$currentDay]['todo'] / 2;
@@ -223,7 +229,7 @@ $month = -1;
 $vacancy = 0;
 foreach($HoursInYear as $k => $entry) {
   $reason = [];
-  foreach ([NORMAL, WEEKEND, HOLIDAY, NO_CONDITION, VACANCY, HEALTH, ARMY, ACCIDENT, LEARNING] as $t) {
+  foreach ([NORMAL, WEEKEND, HOLIDAY, NO_CONDITION, VACANCY, HEALTH, ARMY, ACCIDENT, LEARNING, COMPENSATION] as $t) {
     if ($t & $entry['reason']) {
       switch($t) {
         case NORMAL: $reason[] = 'normal'; break;
@@ -235,6 +241,7 @@ foreach($HoursInYear as $k => $entry) {
         case ARMY: $reason[] = 'armée'; break;
         case ACCIDENT: $reason[] = 'accident'; break;
         case LEARNING: $reason[] = 'formation'; break;
+        case COMPENSATION: $reason[] = 'compensation'; break;
         case ERROR_INPUT: $reason[] = 'erreur'; break;
       }
     }

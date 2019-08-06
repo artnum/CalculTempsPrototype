@@ -8,6 +8,7 @@ define('HEALTH', 0x20);
 define('ARMY', 0x40);
 define('ACCIDENT', 0x80);
 define('LEARNING', 0x100);
+define('COMPENSATION', 0x200);
 define('ERROR_INPUT', 0x00100000);
 
 const DAY_LENGTH_IN_S = 86400; /* 60*60*24 */
